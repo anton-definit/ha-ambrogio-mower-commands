@@ -7,13 +7,9 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import config_validation as cv
 
 from .const import (
     DOMAIN,
-    # config keys
-    CONF_IMEI,
-    CONF_CLIENT_NAME,
     # service names
     SERVICE_SET_PROFILE,
     SERVICE_WORK_NOW,
@@ -37,49 +33,38 @@ from .const import (
     ATTR_INDEX,
 )
 from .api_client import AmbrogioClient, AmbroClientError, AmbroAuthError
-from .queue import Command  # <-- queue command envelope
+from .queue import Command  # queue command envelope
 
 _LOGGER = logging.getLogger(__name__)
 
 # ----------------
 # Schemas (simple)
 # ----------------
-SET_PROFILE_SCHEMA = vol.Schema(
-    {
-        vol.Required("device_id"): cv.entity_ids_or_uuids,
-        vol.Required(ATTR_PROFILE): vol.All(vol.Coerce(int), vol.Range(min=1, max=3)),
-    }
-)
-WORK_NOW_SCHEMA = vol.Schema({vol.Required("device_id"): cv.entity_ids_or_uuids})
-BORDER_CUT_SCHEMA = vol.Schema({vol.Required("device_id"): cv.entity_ids_or_uuids})
-CHARGE_NOW_SCHEMA = vol.Schema({vol.Required("device_id"): cv.entity_ids_or_uuids})
-CHARGE_UNTIL_SCHEMA = vol.Schema(
-    {
-        vol.Required("device_id"): cv.entity_ids_or_uuids,
-        vol.Required(ATTR_HOURS): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
-        vol.Required(ATTR_MINUTES): vol.All(vol.Coerce(int), vol.Range(min=0, max=59)),
-        vol.Required(ATTR_WEEKDAY): vol.All(vol.Coerce(int), vol.Range(min=1, max=7)),
-    }
-)
-TRACE_POSITION_SCHEMA = vol.Schema({vol.Required("device_id"): cv.entity_ids_or_uuids})
-KEEP_OUT_SCHEMA = vol.Schema(
-    {
-        vol.Required("device_id"): cv.entity_ids_or_uuids,
-        vol.Required(ATTR_LOCATION): vol.Schema(
-            {
-                vol.Required(ATTR_LATITUDE): float,
-                vol.Required(ATTR_LONGITUDE): float,
-                vol.Optional(ATTR_RADIUS): vol.Coerce(int),
-            }
-        ),
-        vol.Optional(ATTR_HOURS): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
-        vol.Optional(ATTR_MINUTES): vol.All(vol.Coerce(int), vol.Range(min=0, max=59)),
-        vol.Optional(ATTR_INDEX): vol.Coerce(int),
-    }
-)
-WAKE_UP_SCHEMA = vol.Schema({vol.Required("device_id"): cv.entity_ids_or_uuids})
-THING_FIND_SCHEMA = vol.Schema({vol.Required("device_id"): cv.entity_ids_or_uuids})
-THING_LIST_SCHEMA = vol.Schema({vol.Required("device_id"): cv.entity_ids_or_uuids})
+SET_PROFILE_SCHEMA = vol.Schema({
+    vol.Required(ATTR_PROFILE): vol.All(vol.Coerce(int), vol.Range(min=1, max=3)),
+})
+WORK_NOW_SCHEMA = vol.Schema({})
+BORDER_CUT_SCHEMA = vol.Schema({})
+CHARGE_NOW_SCHEMA = vol.Schema({})
+CHARGE_UNTIL_SCHEMA = vol.Schema({
+    vol.Required(ATTR_HOURS): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
+    vol.Required(ATTR_MINUTES): vol.All(vol.Coerce(int), vol.Range(min=0, max=59)),
+    vol.Required(ATTR_WEEKDAY): vol.All(vol.Coerce(int), vol.Range(min=1, max=7)),
+})
+TRACE_POSITION_SCHEMA = vol.Schema({})
+KEEP_OUT_SCHEMA = vol.Schema({
+    vol.Required(ATTR_LOCATION): vol.Schema({
+        vol.Required(ATTR_LATITUDE): float,
+        vol.Required(ATTR_LONGITUDE): float,
+        vol.Optional(ATTR_RADIUS): vol.Coerce(int),
+    }),
+    vol.Optional(ATTR_HOURS): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
+    vol.Optional(ATTR_MINUTES): vol.All(vol.Coerce(int), vol.Range(min=0, max=59)),
+    vol.Optional(ATTR_INDEX): vol.Coerce(int),
+})
+WAKE_UP_SCHEMA = vol.Schema({})
+THING_FIND_SCHEMA = vol.Schema({})
+THING_LIST_SCHEMA = vol.Schema({})
 
 # ------------------------
 # Registration entrypoints

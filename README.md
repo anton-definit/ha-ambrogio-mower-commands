@@ -3,7 +3,7 @@
 This is a custom [Home Assistant](https://www.home-assistant.io/) integration that lets you send **direct commands** to your Ambrogio (ZCS) robotic mower via the DeviceWISE API.
 
 Unlike the full-featured `ha-zcs-mower` integration, this project is intentionally **minimal**:
-- Focuses on **service calls** for automation (no entities, no sensors).
+- Focuses on **service calls** for automation (no entities, no sensors, no devices).
 - Supports **one mower** (one IMEI).
 - Commands are queued and retried automatically for reliability.
 
@@ -38,42 +38,36 @@ Available Home Assistant services:
    - Optionally, enter a custom **Client name** (shown in the ZCS cloud).
    - A client key will be generated automatically.
 
-4. The mower will appear as a **device** in HA (so you can target it by `device_id` in automations).
-
 ---
 
 ## Example automations
 
 ### Start mowing immediately
-~~~yaml
+```yaml
 alias: Start mowing now
 trigger:
   - platform: time
     at: "08:00:00"
 action:
   - service: ambrogio_mower_commands.work_now
-    target:
-      device_id: YOUR_DEVICE_ID
-~~~
+```
 
 ### Charge until 6:30 AM on weekdays
-~~~yaml
+```yaml
 alias: Charge overnight until morning
 trigger:
   - platform: time
     at: "23:00:00"
 action:
   - service: ambrogio_mower_commands.charge_until
-    target:
-      device_id: YOUR_DEVICE_ID
     data:
       hours: 6
       minutes: 30
       weekday: 1   # Monday (1=Mon ... 7=Sun)
-~~~
+```
 
 ### Wake up and trace position
-~~~yaml
+```yaml
 alias: Wake mower and check position
 trigger:
   - platform: state
@@ -81,13 +75,9 @@ trigger:
     to: "on"
 action:
   - service: ambrogio_mower_commands.wake_up
-    target:
-      device_id: YOUR_DEVICE_ID
   - delay: "00:00:10"
   - service: ambrogio_mower_commands.trace_position
-    target:
-      device_id: YOUR_DEVICE_ID
-~~~
+```
 
 ---
 
