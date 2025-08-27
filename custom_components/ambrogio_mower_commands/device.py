@@ -4,7 +4,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN, CONF_NAME
+from .const import DOMAIN, CONF_CLIENT_NAME
 
 
 async def ensure_device(hass: HomeAssistant, entry: ConfigEntry, *, imei: str, client_name: str) -> None:
@@ -16,7 +16,7 @@ async def ensure_device(hass: HomeAssistant, entry: ConfigEntry, *, imei: str, c
         identifiers={(DOMAIN, imei)},
         manufacturer="ZCS / Ambrogio",
         model="Ambrogio",
-        name=entry.data.get(CONF_NAME, f"Ambrogio Mower {imei}"),
+        name=entry.data.get(CONF_CLIENT_NAME, f"Ambrogio Mower {imei}"),
         suggested_area="Garden",
         via_device=None,
     )
