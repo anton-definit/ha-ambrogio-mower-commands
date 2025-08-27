@@ -1,0 +1,12 @@
+{
+  "domain": "ambrogio_mower_commands",
+  "name": "Ambrogio Mower Commands",
+  "version": "0.1.0",
+  "documentation": "https://github.com/anton-definit/ambrogio-mower-commands",
+  "issue_tracker": "https://github.com/anton-definit/ambrogio-mower-commands/issues",
+  "config_flow": true,
+  "requirements": [],
+  "codeowners": ["@anton-definit"],
+  "integration_type": "hub",
+  "loggers": ["custom_components.ambrogio_mower_commands"]
+}
