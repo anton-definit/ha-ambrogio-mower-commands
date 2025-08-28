@@ -1,4 +1,4 @@
-# Ambrogio Mower Commands (Home Assistant Integration)
+# DRAFT: Ambrogio Mower Commands (Home Assistant Integration)
 
 This is a custom [Home Assistant](https://www.home-assistant.io/) integration that lets you send **direct commands** to your Ambrogio (ZCS) robotic mower via the DeviceWISE API.
 

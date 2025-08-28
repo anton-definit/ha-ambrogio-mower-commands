@@ -251,11 +251,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
         params = {"coding": "SEVEN_BIT", "message": "UP"}
         await _safe(queue.submit(Command(op="sms.send", imei=imei, params=params, label="wake_up")), "wake_up")
 
-    # ---- Diagnostic handlers (direct call; update sensors; support returning/logging) ----
-    async def _srv_thing_find(call: ServiceCall) -> Any | None:
-        entry_id, client, _imei, _queue, state_store = await _resolve_single()
+    async def _srv_thing_find(call: ServiceCall) -> dict[str, Any]:
+        entry_id, client, imei, _queue, state_store = await _resolve_single()
         try:
-            resp = await client.find_thing_by_imei(state_store.get("info", {}).get("key") or _imei, as_raw=True)
+            imei_to_query = (state_store.get("info") or {}).get("key") or imei
+            resp = await client.find_thing_by_imei(imei_to_query, as_raw=True) or {}
+
             changed = _update_location_from_find(entry_id, state_store, resp)
 
             if call.data.get("log_response", True):
@@ -264,24 +265,23 @@ async def async_register_services(hass: HomeAssistant) -> None:
             if changed:
                 _LOGGER.debug("thing.find applied new location/info to sensors")
 
-            if call.data.get("return_response", True):
-                return resp
-            _LOGGER.debug("Command thing_find executed successfully (response suppressed)")
-            return None
+            # Always return a dict (even when suppressed), to satisfy HA's response handling
+            return resp if call.data.get("return_response", True) else {}
         except AmbroAuthError as exc:
             _LOGGER.error("Auth error during thing_find: %s", exc)
-            return None
+            return {"error": "auth_error", "message": str(exc)}
         except AmbroClientError as exc:
             _LOGGER.error("API error during thing_find: %s", exc)
-            return None
+            return {"error": "api_error", "message": str(exc)}
         except Exception as exc:  # noqa: BLE001
             _LOGGER.exception("Unexpected error during thing_find: %s", exc)
-            return None
+            return {"error": "unexpected_error", "message": str(exc)}
 
-    async def _srv_thing_list(call: ServiceCall) -> Any | None:
+    async def _srv_thing_list(call: ServiceCall) -> dict[str, Any]:
         entry_id, client, imei, _queue, state_store = await _resolve_single()
         try:
-            resp = await client.list_things([imei], as_raw=True)
+            resp = await client.list_things([imei], as_raw=True) or {}
+
             changed = _update_location_from_list(entry_id, state_store, resp)
 
             if call.data.get("log_response", True):
@@ -290,19 +290,17 @@ async def async_register_services(hass: HomeAssistant) -> None:
             if changed:
                 _LOGGER.debug("thing.list applied new location/info to sensors")
 
-            if call.data.get("return_response", True):
-                return resp
-            _LOGGER.debug("Command thing_list executed successfully (response suppressed)")
-            return None
+            # Always return a dict (even when suppressed)
+            return resp if call.data.get("return_response", True) else {}
         except AmbroAuthError as exc:
             _LOGGER.error("Auth error during thing_list: %s", exc)
-            return None
+            return {"error": "auth_error", "message": str(exc)}
         except AmbroClientError as exc:
             _LOGGER.error("API error during thing_list: %s", exc)
-            return None
+            return {"error": "api_error", "message": str(exc)}
         except Exception as exc:  # noqa: BLE001
             _LOGGER.exception("Unexpected error during thing_list: %s", exc)
-            return None
+            return {"error": "unexpected_error", "message": str(exc)}
 
     # ---- Register ----
     hass.services.async_register(DOMAIN, SERVICE_SET_PROFILE, _srv_set_profile, schema=SET_PROFILE_SCHEMA)
