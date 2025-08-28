@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -63,8 +64,16 @@ KEEP_OUT_SCHEMA = vol.Schema({
     vol.Optional(ATTR_INDEX): vol.Coerce(int),
 })
 WAKE_UP_SCHEMA = vol.Schema({})
-THING_FIND_SCHEMA = vol.Schema({})
-THING_LIST_SCHEMA = vol.Schema({})
+
+# Diagnostic services: allow returning/logging the API response
+THING_FIND_SCHEMA = vol.Schema({
+    vol.Optional("return_response", default=True): vol.Boolean(),
+    vol.Optional("log_response", default=True): vol.Boolean(),
+})
+THING_LIST_SCHEMA = vol.Schema({
+    vol.Optional("return_response", default=True): vol.Boolean(),
+    vol.Optional("log_response", default=True): vol.Boolean(),
+})
 
 # ------------------------
 # Registration entrypoints
@@ -163,32 +172,47 @@ async def async_register_services(hass: HomeAssistant) -> None:
         params = {"coding": "SEVEN_BIT", "message": "UP"}
         await _safe(queue.submit(Command(op="sms.send", imei=imei, params=params, label="wake_up")), "wake_up")
 
-    async def _srv_thing_find(call: ServiceCall) -> None:
-        _client, imei, queue = await _resolve_single()
-        await _safe(queue.submit(Command(op="thing.find", imei=imei, params={}, label="thing_find")), "thing_find")
+    # ---- Diagnostic handlers (direct call; support returning/logging response) ----
+    async def _srv_thing_find(call: ServiceCall) -> Any | None:
+        client, imei, _queue = await _resolve_single()
+        try:
+            resp = await client.find_thing_by_imei(imei, as_raw=True)
+            if call.data.get("log_response", True):
+                _LOGGER.debug("thing.find response: %s", json.dumps(resp, ensure_ascii=False))
+            if call.data.get("return_response", True):
+                return resp
+            _LOGGER.debug("Command thing_find executed successfully (response suppressed)")
+            return None
+        except AmbroAuthError as exc:
+            _LOGGER.error("Auth error during thing_find: %s", exc)
+            return None
+        except AmbroClientError as exc:
+            _LOGGER.error("API error during thing_find: %s", exc)
+            return None
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.exception("Unexpected error during thing_find: %s", exc)
+            return None
 
-    async def _srv_thing_list(call: ServiceCall) -> None:
-        _client, imei, queue = await _resolve_single()
-        list_params = {
-            "show": [
-                "id",
-                "key",
-                "name",
-                "connected",
-                "lastSeen",
-                "lastCommunication",
-                "loc",
-                "properties",
-                "alarms",
-                "attrs",
-                "createdOn",
-                "storage",
-                "varBillingPlanCode",
-            ],
-            "hideFields": True,
-            "keys": [imei],
-        }
-        await _safe(queue.submit(Command(op="thing.list", imei=imei, params=list_params, label="thing_list")), "thing_list")
+    async def _srv_thing_list(call: ServiceCall) -> Any | None:
+        client, imei, _queue = await _resolve_single()
+        list_params_keys = [imei]
+        try:
+            resp = await client.list_things(list_params_keys, as_raw=True)
+            if call.data.get("log_response", True):
+                _LOGGER.debug("thing.list response: %s", json.dumps(resp, ensure_ascii=False))
+            if call.data.get("return_response", True):
+                return resp
+            _LOGGER.debug("Command thing_list executed successfully (response suppressed)")
+            return None
+        except AmbroAuthError as exc:
+            _LOGGER.error("Auth error during thing_list: %s", exc)
+            return None
+        except AmbroClientError as exc:
+            _LOGGER.error("API error during thing_list: %s", exc)
+            return None
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.exception("Unexpected error during thing_list: %s", exc)
+            return None
 
     # ---- Register ----
     hass.services.async_register(DOMAIN, SERVICE_SET_PROFILE, _srv_set_profile, schema=SET_PROFILE_SCHEMA)
@@ -199,8 +223,22 @@ async def async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_TRACE_POSITION, _srv_trace_position, schema=TRACE_POSITION_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_KEEP_OUT, _srv_keep_out, schema=KEEP_OUT_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_WAKE_UP, _srv_wake_up, schema=WAKE_UP_SCHEMA)
-    hass.services.async_register(DOMAIN, SERVICE_THING_FIND, _srv_thing_find, schema=THING_FIND_SCHEMA)
-    hass.services.async_register(DOMAIN, SERVICE_THING_LIST, _srv_thing_list, schema=THING_LIST_SCHEMA)
+
+    # Diagnostic services return payloads
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_THING_FIND,
+        _srv_thing_find,
+        schema=THING_FIND_SCHEMA,
+        supports_response=True,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_THING_LIST,
+        _srv_thing_list,
+        schema=THING_LIST_SCHEMA,
+        supports_response=True,
+    )
 
     hass.data[DOMAIN][_FLAG] = True
     _LOGGER.debug("Ambrogio Mower Commands: services registered.")

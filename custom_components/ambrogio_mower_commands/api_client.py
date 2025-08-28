@@ -68,13 +68,26 @@ class AmbrogioClient:
 
     # ---- Core call ----
 
-    async def call(self, command: str, params: dict[str, Any] | None = None) -> dict[str, Any] | None:
-        """Generic TR50 call; returns the data.params object when present."""
+    async def call(
+        self,
+        command: str,
+        params: dict[str, Any] | None = None,
+        *,
+        as_raw: bool = False,
+    ) -> dict[str, Any] | None:
+        """
+        Generic TR50 call.
+
+        - When as_raw=False (default): return the common success payload (data.params) if present,
+          otherwise the full response.
+        - When as_raw=True: always return the full parsed response envelope.
+        """
         payload: dict[str, Any] = {"data": {"command": command}}
         if params:
             payload["data"]["params"] = params
         raw = await self._post(payload)
-        # Return the common success payload shape (data.params), or the whole response if absent
+        if as_raw:
+            return raw
         return (raw.get("data") or {}).get("params") or raw
 
     async def _post(self, payload: dict[str, Any], *, expect_auth_envelope: bool = False) -> dict[str, Any]:
@@ -117,7 +130,14 @@ class AmbrogioClient:
 
     # ---- Convenience commands we’ll expose as services ----
 
-    async def method_exec(self, imei: str, method: str, params: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    async def method_exec(
+        self,
+        imei: str,
+        method: str,
+        params: dict[str, Any] | None = None,
+        *,
+        as_raw: bool = False,
+    ) -> dict[str, Any] | None:
         body: dict[str, Any] = {
             "method": method,
             "imei": imei,
@@ -126,21 +146,22 @@ class AmbrogioClient:
         }
         if params:
             body["params"] = params
-        return await self.call("method.exec", body)
+        return await self.call("method.exec", body, as_raw=as_raw)
 
-    async def sms(self, imei: str, message: str) -> dict[str, Any] | None:
+    async def sms(self, imei: str, message: str, *, as_raw: bool = False) -> dict[str, Any] | None:
         return await self.call(
             "sms.send",
             {"coding": "SEVEN_BIT", "imei": imei, "message": message},
+            as_raw=as_raw,
         )
 
-    async def find_thing_by_imei(self, imei: str) -> dict[str, Any] | None:
-        return await self.call("thing.find", {"imei": imei})
+    async def find_thing_by_imei(self, imei: str, *, as_raw: bool = False) -> dict[str, Any] | None:
+        return await self.call("thing.find", {"imei": imei}, as_raw=as_raw)
 
-    async def find_thing_by_key(self, key: str) -> dict[str, Any] | None:
-        return await self.call("thing.find", {"key": key})
+    async def find_thing_by_key(self, key: str, *, as_raw: bool = False) -> dict[str, Any] | None:
+        return await self.call("thing.find", {"key": key}, as_raw=as_raw)
 
-    async def list_things(self, keys: list[str]) -> dict[str, Any] | None:
+    async def list_things(self, keys: list[str], *, as_raw: bool = False) -> dict[str, Any] | None:
         return await self.call(
             "thing.list",
             {
@@ -162,4 +183,5 @@ class AmbrogioClient:
                 "hideFields": True,
                 "keys": keys,
             },
+            as_raw=as_raw,
         )
