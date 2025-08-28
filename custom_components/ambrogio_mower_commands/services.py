@@ -109,23 +109,26 @@ async def async_register_services(hass: HomeAssistant) -> None:
     # ---- State helpers ----
     def _update_location_from_find(entry_id: str, store: dict[str, Any], resp: dict[str, Any]) -> bool:
         params = (resp.get("data") or {}).get("params") or {}
-        alarms = params.get("alarms") or {}
-        rs = alarms.get("robot_state") or {}
+        loc = params.get("loc") or {}
+        corr = loc.get("corrId")
+        loc_lat, loc_lng = loc.get("lat"), loc.get("lng")
+        loc_ts = params.get("locUpdated") or loc.get("since")
 
-        # 1) Prefer robot_state lat/lng (device-reported)
-        rs_lat = rs.get("lat")
-        rs_lng = rs.get("lng")
+        rs = (params.get("alarms") or {}).get("robot_state") or {}
+        rs_lat, rs_lng = rs.get("lat"), rs.get("lng")
         rs_ts = rs.get("ts") or rs.get("since")
 
-        if rs_lat is not None and rs_lng is not None:
+        # 1) Prefer immediate trace fix
+        if corr == "trace" and loc_lat is not None and loc_lng is not None:
+            lat, lng, when, pos_src = loc_lat, loc_lng, loc_ts, "params.loc(trace)"
+        # 2) Otherwise prefer robot_state
+        elif rs_lat is not None and rs_lng is not None:
             lat, lng, when, pos_src = rs_lat, rs_lng, rs_ts, "alarms.robot_state"
+        # 3) Fallback to regular loc
+        elif loc_lat is not None and loc_lng is not None:
+            lat, lng, when, pos_src = loc_lat, loc_lng, loc_ts, "params.loc"
         else:
-            # 2) Fallback: top-level loc (often network fix)
-            loc = params.get("loc") or {}
-            lat = loc.get("lat")
-            lng = loc.get("lng")
-            when = params.get("locUpdated") or loc.get("since")
-            pos_src = "params.loc" if lat is not None and lng is not None else None
+            lat = lng = when = pos_src = None
 
         connected = params.get("connected")
         return _apply_state(entry_id, store, lat, lng, connected, when, "thing.find", info=params, position_source=pos_src)
@@ -133,30 +136,28 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
     def _update_location_from_list(entry_id: str, store: dict[str, Any], resp: dict[str, Any]) -> bool:
         params = (resp.get("data") or {}).get("params") or {}
-        results = params.get("result") or []
-        first = results[0] if results else {}
+        first = (params.get("result") or [{}])[0]
 
-        alarms = first.get("alarms") or {}
-        rs = alarms.get("robot_state") or {}
+        loc = first.get("loc") or {}
+        corr = loc.get("corrId")
+        loc_lat, loc_lng = loc.get("lat"), loc.get("lng")
+        loc_ts = first.get("locUpdated") or loc.get("since")
 
-        # 1) Prefer robot_state lat/lng
-        rs_lat = rs.get("lat")
-        rs_lng = rs.get("lng")
+        rs = (first.get("alarms") or {}).get("robot_state") or {}
+        rs_lat, rs_lng = rs.get("lat"), rs.get("lng")
         rs_ts = rs.get("ts") or rs.get("since")
 
-        if rs_lat is not None and rs_lng is not None:
+        if corr == "trace" and loc_lat is not None and loc_lng is not None:
+            lat, lng, when, pos_src = loc_lat, loc_lng, loc_ts, "result.loc(trace)"
+        elif rs_lat is not None and rs_lng is not None:
             lat, lng, when, pos_src = rs_lat, rs_lng, rs_ts, "alarms.robot_state"
+        elif loc_lat is not None and loc_lng is not None:
+            lat, lng, when, pos_src = loc_lat, loc_lng, loc_ts, "result.loc"
         else:
-            # 2) Fallback: item.loc
-            loc = first.get("loc") or {}
-            lat = loc.get("lat")
-            lng = loc.get("lng")
-            when = first.get("locUpdated") or loc.get("since")
-            pos_src = "result.loc" if lat is not None and lng is not None else None
+            lat = lng = when = pos_src = None
 
         connected = first.get("connected")
         return _apply_state(entry_id, store, lat, lng, connected, when, "thing.list", info=first, position_source=pos_src)
-
 
     def _apply_state(
         entry_id: str,
