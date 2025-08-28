@@ -93,15 +93,53 @@ class AmbrogioLocationSensor(_BaseAmbrogioSensor):
         store = self.hass.data[DOMAIN][self._entry_id][KEY_STATE]
         lat = store.get("latitude")
         lng = store.get("longitude")
-        self._attr_native_value = f"{lat},{lng}" if lat is not None and lng is not None else "unknown"
+
+        # Pretty state ("lat,lon" with 6 dp) or "unknown"
+        if lat is not None and lng is not None:
+            try:
+                slat = f"{float(lat):.6f}"
+                slng = f"{float(lng):.6f}"
+            except Exception:  # fallback if non-float for any reason
+                slat, slng = str(lat), str(lng)
+            self._attr_native_value = f"{slat},{slng}"
+        else:
+            self._attr_native_value = "unknown"
+
+        # Pull richer info from last thing.find/list response (if available)
+        info = store.get("info") or {}
+        loc = info.get("loc") or {}
+        addr = loc.get("addr") or {}
+        geohash = loc.get("geohash")
+        fix_type = loc.get("fixType")
+        speed = loc.get("speed")
+
+        # Dynamic icon based on fix type
+        if fix_type == "gps":
+            self._attr_icon = "mdi:crosshairs-gps"
+        elif fix_type == "network":
+            self._attr_icon = "mdi:signal"
+        else:
+            self._attr_icon = "mdi:map-marker"
+
+        def _fmt_addr() -> str | None:
+            parts = [addr.get("street"), addr.get("city"), addr.get("state"), addr.get("country")]
+            parts = [p for p in parts if p]
+            return ", ".join(parts) if parts else None
+
         self._attr_extra_state_attributes = {
             "latitude": lat,
             "longitude": lng,
             "loc_updated": store.get("loc_updated"),
             "source": store.get("source"),
-            "maps_url": f"https://maps.google.com/?q={lat},{lng}" if lat is not None and lng is not None else None,
+            "geohash": geohash,
+            "fix_type": fix_type,
+            "speed": speed,
+            "address": _fmt_addr(),
+            "maps_url": (
+                f"https://maps.google.com/?q={lat},{lng}"
+                if lat is not None and lng is not None else None
+            ),
         }
-
 
 class AmbrogioInfoSensor(_BaseAmbrogioSensor):
     _attr_name = "Ambrogio Mower Info"
@@ -137,6 +175,7 @@ class AmbrogioInfoSensor(_BaseAmbrogioSensor):
 
         # Robot state (index into ROBOT_STATES)
         robot_state_code, robot_state_name, robot_state_icon, robot_state_color = _map_robot_state(info)
+        self._attr_icon = robot_state_icon or "mdi:information-outline"
         working = bool(robot_state_code in ROBOT_STATES_WORKING) if robot_state_code is not None else None
         available = bool((robot_state_code or 0) > 0) if robot_state_code is not None else None
 
