@@ -94,32 +94,35 @@ class AmbrogioLocationSensor(_BaseAmbrogioSensor):
         lat = store.get("latitude")
         lng = store.get("longitude")
 
-        # Pretty state ("lat,lon" with 6 dp) or "unknown"
+        # Pretty state
         if lat is not None and lng is not None:
             try:
                 slat = f"{float(lat):.6f}"
                 slng = f"{float(lng):.6f}"
-            except Exception:  # fallback if non-float for any reason
+            except Exception:
                 slat, slng = str(lat), str(lng)
             self._attr_native_value = f"{slat},{slng}"
         else:
             self._attr_native_value = "unknown"
 
-        # Pull richer info from last thing.find/list response (if available)
+        # Optional richer info from last response
         info = store.get("info") or {}
         loc = info.get("loc") or {}
         addr = loc.get("addr") or {}
-        geohash = loc.get("geohash")
         fix_type = loc.get("fixType")
-        speed = loc.get("speed")
 
-        # Dynamic icon based on fix type
+        # Base icon from fix type
         if fix_type == "gps":
             self._attr_icon = "mdi:crosshairs-gps"
         elif fix_type == "network":
             self._attr_icon = "mdi:signal"
         else:
             self._attr_icon = "mdi:map-marker"
+
+        # >>> Place your override right here <<<
+        pos_src = store.get("position_source")
+        if pos_src == "alarms.robot_state":
+            self._attr_icon = "mdi:robot-mower-outline"
 
         def _fmt_addr() -> str | None:
             parts = [addr.get("street"), addr.get("city"), addr.get("state"), addr.get("country")]
@@ -131,14 +134,10 @@ class AmbrogioLocationSensor(_BaseAmbrogioSensor):
             "longitude": lng,
             "loc_updated": store.get("loc_updated"),
             "source": store.get("source"),
-            "geohash": geohash,
-            "fix_type": fix_type,
-            "speed": speed,
+            "position_source": pos_src,  # show where coords came from
             "address": _fmt_addr(),
-            "maps_url": (
-                f"https://maps.google.com/?q={lat},{lng}"
-                if lat is not None and lng is not None else None
-            ),
+            "maps_url": (f"https://maps.google.com/?q={lat},{lng}"
+                        if lat is not None and lng is not None else None),
         }
 
 class AmbrogioInfoSensor(_BaseAmbrogioSensor):

@@ -109,23 +109,54 @@ async def async_register_services(hass: HomeAssistant) -> None:
     # ---- State helpers ----
     def _update_location_from_find(entry_id: str, store: dict[str, Any], resp: dict[str, Any]) -> bool:
         params = (resp.get("data") or {}).get("params") or {}
-        loc = params.get("loc") or {}
-        lat = loc.get("lat")
-        lng = loc.get("lng")
+        alarms = params.get("alarms") or {}
+        rs = alarms.get("robot_state") or {}
+
+        # 1) Prefer robot_state lat/lng (device-reported)
+        rs_lat = rs.get("lat")
+        rs_lng = rs.get("lng")
+        rs_ts = rs.get("ts") or rs.get("since")
+
+        if rs_lat is not None and rs_lng is not None:
+            lat, lng, when, pos_src = rs_lat, rs_lng, rs_ts, "alarms.robot_state"
+        else:
+            # 2) Fallback: top-level loc (often network fix)
+            loc = params.get("loc") or {}
+            lat = loc.get("lat")
+            lng = loc.get("lng")
+            when = params.get("locUpdated") or loc.get("since")
+            pos_src = "params.loc" if lat is not None and lng is not None else None
+
         connected = params.get("connected")
-        loc_updated = params.get("locUpdated") or loc.get("since")
-        return _apply_state(entry_id, store, lat, lng, connected, loc_updated, "thing.find", info=params)
+        return _apply_state(entry_id, store, lat, lng, connected, when, "thing.find", info=params, position_source=pos_src)
+
 
     def _update_location_from_list(entry_id: str, store: dict[str, Any], resp: dict[str, Any]) -> bool:
         params = (resp.get("data") or {}).get("params") or {}
         results = params.get("result") or []
         first = results[0] if results else {}
-        loc = first.get("loc") or {}
-        lat = loc.get("lat")
-        lng = loc.get("lng")
+
+        alarms = first.get("alarms") or {}
+        rs = alarms.get("robot_state") or {}
+
+        # 1) Prefer robot_state lat/lng
+        rs_lat = rs.get("lat")
+        rs_lng = rs.get("lng")
+        rs_ts = rs.get("ts") or rs.get("since")
+
+        if rs_lat is not None and rs_lng is not None:
+            lat, lng, when, pos_src = rs_lat, rs_lng, rs_ts, "alarms.robot_state"
+        else:
+            # 2) Fallback: item.loc
+            loc = first.get("loc") or {}
+            lat = loc.get("lat")
+            lng = loc.get("lng")
+            when = first.get("locUpdated") or loc.get("since")
+            pos_src = "result.loc" if lat is not None and lng is not None else None
+
         connected = first.get("connected")
-        loc_updated = first.get("locUpdated") or loc.get("since")
-        return _apply_state(entry_id, store, lat, lng, connected, loc_updated, "thing.list", info=first)
+        return _apply_state(entry_id, store, lat, lng, connected, when, "thing.list", info=first, position_source=pos_src)
+
 
     def _apply_state(
         entry_id: str,
@@ -136,15 +167,15 @@ async def async_register_services(hass: HomeAssistant) -> None:
         loc_updated: Any,
         source: str,
         info: dict[str, Any],
+        position_source: str | None = None,
     ) -> bool:
         """Write to store only on change; fire dispatcher if changed."""
         changed = False
 
-        # normalize floats if present
         def _norm(v):
             try:
                 return round(float(v), 6)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return None
 
         nlat = _norm(lat)
@@ -156,7 +187,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 store["longitude"] = nlng
                 changed = True
 
-        if connected is not None and store.get("connected") != connected:
+        if connected is not None and store.get("connected") != bool(connected):
             store["connected"] = bool(connected)
             changed = True
 
@@ -164,18 +195,21 @@ async def async_register_services(hass: HomeAssistant) -> None:
             store["loc_updated"] = loc_updated
             changed = True
 
-        # Always refresh info blob, but only mark changed if it's materially different
-        # (simple str compare for compactness)
+        if position_source is not None and store.get("position_source") != position_source:
+            store["position_source"] = position_source
+            changed = True
+
         prev_info = store.get("info")
         if info and (prev_info != info):
             store["info"] = info
             changed = True
 
         if changed:
-            store["source"] = source
+            store["source"] = source  # which service updated us
             async_dispatcher_send(hass, SIGNAL_STATE_UPDATED, entry_id)
 
         return changed
+
 
     # ---- Handlers (queued) ----
     async def _srv_set_profile(call: ServiceCall) -> None:
