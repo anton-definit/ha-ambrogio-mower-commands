@@ -1,154 +1,148 @@
 set_profile:
   name: Set profile
-  description: Set the mower profile (1–3).
+  description: Set mowing profile (1..3).
   fields:
     profile:
-      name: Profile
-      description: 1=Home, 2=Middle, 3=Work (mapped to 0–2 in API).
       required: true
-      example: 2
       selector:
         number:
           min: 1
           max: 3
-          step: 1
           mode: slider
+    return_response:
+      required: false
+      default: true
+      selector:
+        boolean: {}
+    log_response:
+      required: false
+      default: false
+      selector:
+        boolean: {}
 
 work_now:
   name: Work now
   description: Start mowing immediately.
-  fields: {}
+  fields:
+    return_response:
+      default: true
+      selector: { boolean: {} }
+    log_response:
+      default: false
+      selector: { boolean: {} }
 
 border_cut:
   name: Border cut
-  description: Start a border cut cycle.
-  fields: {}
+  description: Start border cut mode.
+  fields:
+    return_response:
+      default: true
+      selector: { boolean: {} }
+    log_response:
+      default: false
+      selector: { boolean: {} }
 
 charge_now:
   name: Charge now
-  description: Send the mower to charge immediately.
-  fields: {}
+  description: Send mower to charge immediately.
+  fields:
+    return_response:
+      default: true
+      selector: { boolean: {} }
+    log_response:
+      default: false
+      selector: { boolean: {} }
 
 charge_until:
   name: Charge until
-  description: Charge until a specific weekday time.
+  description: Charge until weekday/time.
   fields:
     hours:
-      name: Hours
-      description: Hour of day in 24h format (0–23).
       required: true
-      example: 6
       selector:
-        number:
-          min: 0
-          max: 23
-          step: 1
+        number: { min: 0, max: 23, mode: slider }
     minutes:
-      name: Minutes
-      description: Minute (0–59).
       required: true
-      example: 30
       selector:
-        number:
-          min: 0
-          max: 59
-          step: 1
+        number: { min: 0, max: 59, mode: slider }
     weekday:
-      name: Weekday
-      description: 1=Mon … 7=Sun.
       required: true
-      example: 1
       selector:
-        number:
-          min: 1
-          max: 7
-          step: 1
+        number: { min: 1, max: 7, mode: slider }
+    return_response:
+      default: true
+      selector: { boolean: {} }
+    log_response:
+      default: false
+      selector: { boolean: {} }
 
 trace_position:
   name: Trace position
-  description: Ask the mower to send its current position.
-  fields: {}
+  description: Ask the mower to produce a fresh position fix.
+  fields:
+    return_response:
+      default: true
+      selector: { boolean: {} }
+    log_response:
+      default: false
+      selector: { boolean: {} }
 
 keep_out:
-  name: Keep out (temporary no-mow)
-  description: Create a temporary keep-out zone (circle) with optional duration and slot index.
+  name: Keep out
+  description: Add/adjust a temporary keep-out area.
   fields:
     location:
-      name: Location
-      description: Object with latitude, longitude, optional radius (meters).
       required: true
-      example: {"latitude": 56.30065, "longitude": 10.48163, "radius": 26}
       selector:
-        object: {}
+        object:
     hours:
-      name: Hours
-      description: Optional hours component (0–23).
       required: false
-      example: 8
       selector:
-        number:
-          min: 0
-          max: 23
-          step: 1
+        number: { min: 0, max: 23, mode: slider }
     minutes:
-      name: Minutes
-      description: Optional minutes component (0–59).
       required: false
-      example: 45
       selector:
-        number:
-          min: 0
-          max: 59
-          step: 1
+        number: { min: 0, max: 59, mode: slider }
     index:
-      name: Index
-      description: Optional slot index.
       required: false
-      example: 1
       selector:
-        number:
-          min: 0
-          step: 1
+        number: { min: 0, max: 9, mode: slider }
+    return_response:
+      default: true
+      selector: { boolean: {} }
+    log_response:
+      default: false
+      selector: { boolean: {} }
 
 wake_up:
   name: Wake up
-  description: Send an SMS 'UP' wake command to the mower.
-  fields: {}
+  description: Nudge modem/radio to push pending data to cloud (SMS UP).
+  fields:
+    return_response:
+      default: true
+      selector: { boolean: {} }
+    log_response:
+      default: false
+      selector: { boolean: {} }
 
 thing_find:
-  name: Thing find
-  description: Call thing.find for the configured IMEI.
+  name: thing.find
+  description: Diagnostic fetch of the mower thing (also updates sensors).
   fields:
     return_response:
-      name: Return response
-      description: Return the API JSON as the service result (Developer Tools → Services).
-      required: false
       default: true
-      selector:
-        boolean: {}
+      selector: { boolean: {} }
     log_response:
-      name: Log response
-      description: Write the API JSON to the log at DEBUG level.
-      required: false
-      default: true
-      selector:
-        boolean: {}
+      default: false
+      selector: { boolean: {} }
 
 thing_list:
-  name: Thing list
-  description: Call thing.list for the configured IMEI.
+  name: thing.list
+  description: Diagnostic fetch (list) of the mower thing (also updates sensors).
   fields:
     return_response:
-      name: Return response
-      description: Return the API JSON as the service result (Developer Tools → Services).
-      required: false
       default: true
-      selector:
-        boolean: {}
+      selector: { boolean: {} }
     log_response:
-      name: Log response
-      description: Write the API JSON to the log at DEBUG level.
-      required: false
-      default: true
-      selector:
-        boolean: {}
+      default: false
+      selector: { boolean: {} }
