@@ -8,6 +8,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import (
     DOMAIN,
@@ -32,6 +33,12 @@ from .const import (
     ATTR_LONGITUDE,
     ATTR_RADIUS,
     ATTR_INDEX,
+    # shared keys/signals
+    KEY_CLIENT,
+    KEY_IMEI,
+    KEY_QUEUE,
+    KEY_STATE,
+    SIGNAL_STATE_UPDATED,
 )
 from .api_client import AmbrogioClient, AmbroClientError, AmbroAuthError
 from .queue import Command  # queue command envelope
@@ -86,21 +93,93 @@ async def async_register_services(hass: HomeAssistant) -> None:
     if hass.data.get(DOMAIN, {}).get(_FLAG):
         return
 
-    async def _resolve_single() -> tuple[AmbrogioClient, str, Any]:
-        """Get (client, imei, queue) from the single config entry."""
+    async def _resolve_single() -> tuple[str, AmbrogioClient, str, Any, dict[str, Any]]:
+        """Get (entry_id, client, imei, queue, state_store) from the single config entry."""
         domain_data = hass.data.get(DOMAIN, {})
         for entry_id, blob in domain_data.items():
             if entry_id == _FLAG:
                 continue
-            client: AmbrogioClient = blob["client"]
-            imei: str = blob["imei"]
-            queue = blob["queue"]
-            return client, imei, queue
+            client: AmbrogioClient = blob[KEY_CLIENT]
+            imei: str = blob[KEY_IMEI]
+            queue = blob[KEY_QUEUE]
+            state_store: dict[str, Any] = blob[KEY_STATE]
+            return entry_id, client, imei, queue, state_store
         raise vol.Invalid("Ambrogio Mower Commands is not initialized")
+
+    # ---- State helpers ----
+    def _update_location_from_find(entry_id: str, store: dict[str, Any], resp: dict[str, Any]) -> bool:
+        params = (resp.get("data") or {}).get("params") or {}
+        loc = params.get("loc") or {}
+        lat = loc.get("lat")
+        lng = loc.get("lng")
+        connected = params.get("connected")
+        loc_updated = params.get("locUpdated") or loc.get("since")
+        return _apply_state(entry_id, store, lat, lng, connected, loc_updated, "thing.find", info=params)
+
+    def _update_location_from_list(entry_id: str, store: dict[str, Any], resp: dict[str, Any]) -> bool:
+        params = (resp.get("data") or {}).get("params") or {}
+        results = params.get("result") or []
+        first = results[0] if results else {}
+        loc = first.get("loc") or {}
+        lat = loc.get("lat")
+        lng = loc.get("lng")
+        connected = first.get("connected")
+        loc_updated = first.get("locUpdated") or loc.get("since")
+        return _apply_state(entry_id, store, lat, lng, connected, loc_updated, "thing.list", info=first)
+
+    def _apply_state(
+        entry_id: str,
+        store: dict[str, Any],
+        lat: Any,
+        lng: Any,
+        connected: Any,
+        loc_updated: Any,
+        source: str,
+        info: dict[str, Any],
+    ) -> bool:
+        """Write to store only on change; fire dispatcher if changed."""
+        changed = False
+
+        # normalize floats if present
+        def _norm(v):
+            try:
+                return round(float(v), 6)
+            except Exception:  # noqa: BLE001
+                return None
+
+        nlat = _norm(lat)
+        nlng = _norm(lng)
+
+        if nlat is not None and nlng is not None:
+            if store.get("latitude") != nlat or store.get("longitude") != nlng:
+                store["latitude"] = nlat
+                store["longitude"] = nlng
+                changed = True
+
+        if connected is not None and store.get("connected") != connected:
+            store["connected"] = bool(connected)
+            changed = True
+
+        if loc_updated is not None and store.get("loc_updated") != loc_updated:
+            store["loc_updated"] = loc_updated
+            changed = True
+
+        # Always refresh info blob, but only mark changed if it's materially different
+        # (simple str compare for compactness)
+        prev_info = store.get("info")
+        if info and (prev_info != info):
+            store["info"] = info
+            changed = True
+
+        if changed:
+            store["source"] = source
+            async_dispatcher_send(hass, SIGNAL_STATE_UPDATED, entry_id)
+
+        return changed
 
     # ---- Handlers (queued) ----
     async def _srv_set_profile(call: ServiceCall) -> None:
-        client, imei, queue = await _resolve_single()
+        _entry_id, client, imei, queue, _state = await _resolve_single()
         profile = int(call.data[ATTR_PROFILE])
         params = {
             "method": "set_profile",
@@ -111,22 +190,22 @@ async def async_register_services(hass: HomeAssistant) -> None:
         await _safe(queue.submit(Command(op="method.exec", imei=imei, params=params, label="set_profile")), "set_profile")
 
     async def _srv_work_now(call: ServiceCall) -> None:
-        client, imei, queue = await _resolve_single()
+        _entry_id, client, imei, queue, _state = await _resolve_single()
         params = {"method": "work_now", "ackTimeout": client.ack_timeout, "singleton": True}
         await _safe(queue.submit(Command(op="method.exec", imei=imei, params=params, label="work_now")), "work_now")
 
     async def _srv_border_cut(call: ServiceCall) -> None:
-        client, imei, queue = await _resolve_single()
+        _entry_id, client, imei, queue, _state = await _resolve_single()
         params = {"method": "border_cut", "ackTimeout": client.ack_timeout, "singleton": True}
         await _safe(queue.submit(Command(op="method.exec", imei=imei, params=params, label="border_cut")), "border_cut")
 
     async def _srv_charge_now(call: ServiceCall) -> None:
-        client, imei, queue = await _resolve_single()
+        _entry_id, client, imei, queue, _state = await _resolve_single()
         params = {"method": "charge_now", "ackTimeout": client.ack_timeout, "singleton": True}
         await _safe(queue.submit(Command(op="method.exec", imei=imei, params=params, label="charge_now")), "charge_now")
 
     async def _srv_charge_until(call: ServiceCall) -> None:
-        client, imei, queue = await _resolve_single()
+        _entry_id, client, imei, queue, _state = await _resolve_single()
         hours = int(call.data[ATTR_HOURS])
         minutes = int(call.data[ATTR_MINUTES])
         weekday = int(call.data[ATTR_WEEKDAY])  # 1..7 -> API 0..6
@@ -139,12 +218,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
         await _safe(queue.submit(Command(op="method.exec", imei=imei, params=params, label="charge_until")), "charge_until")
 
     async def _srv_trace_position(call: ServiceCall) -> None:
-        client, imei, queue = await _resolve_single()
+        _entry_id, client, imei, queue, _state = await _resolve_single()
         params = {"method": "trace_position", "ackTimeout": client.ack_timeout, "singleton": True}
         await _safe(queue.submit(Command(op="method.exec", imei=imei, params=params, label="trace_position")), "trace_position")
 
     async def _srv_keep_out(call: ServiceCall) -> None:
-        client, imei, queue = await _resolve_single()
+        _entry_id, client, imei, queue, _state = await _resolve_single()
         loc = call.data[ATTR_LOCATION]
         keep_params: dict[str, Any] = {
             "latitude": float(loc[ATTR_LATITUDE]),
@@ -168,17 +247,23 @@ async def async_register_services(hass: HomeAssistant) -> None:
         await _safe(queue.submit(Command(op="method.exec", imei=imei, params=params, label="keep_out")), "keep_out")
 
     async def _srv_wake_up(call: ServiceCall) -> None:
-        _client, imei, queue = await _resolve_single()
+        _entry_id, _client, imei, queue, _state = await _resolve_single()
         params = {"coding": "SEVEN_BIT", "message": "UP"}
         await _safe(queue.submit(Command(op="sms.send", imei=imei, params=params, label="wake_up")), "wake_up")
 
-    # ---- Diagnostic handlers (direct call; support returning/logging response) ----
+    # ---- Diagnostic handlers (direct call; update sensors; support returning/logging) ----
     async def _srv_thing_find(call: ServiceCall) -> Any | None:
-        client, imei, _queue = await _resolve_single()
+        entry_id, client, _imei, _queue, state_store = await _resolve_single()
         try:
-            resp = await client.find_thing_by_imei(imei, as_raw=True)
+            resp = await client.find_thing_by_imei(state_store.get("info", {}).get("key") or _imei, as_raw=True)
+            changed = _update_location_from_find(entry_id, state_store, resp)
+
             if call.data.get("log_response", True):
                 _LOGGER.debug("thing.find response: %s", json.dumps(resp, ensure_ascii=False))
+
+            if changed:
+                _LOGGER.debug("thing.find applied new location/info to sensors")
+
             if call.data.get("return_response", True):
                 return resp
             _LOGGER.debug("Command thing_find executed successfully (response suppressed)")
@@ -194,12 +279,17 @@ async def async_register_services(hass: HomeAssistant) -> None:
             return None
 
     async def _srv_thing_list(call: ServiceCall) -> Any | None:
-        client, imei, _queue = await _resolve_single()
-        list_params_keys = [imei]
+        entry_id, client, imei, _queue, state_store = await _resolve_single()
         try:
-            resp = await client.list_things(list_params_keys, as_raw=True)
+            resp = await client.list_things([imei], as_raw=True)
+            changed = _update_location_from_list(entry_id, state_store, resp)
+
             if call.data.get("log_response", True):
                 _LOGGER.debug("thing.list response: %s", json.dumps(resp, ensure_ascii=False))
+
+            if changed:
+                _LOGGER.debug("thing.list applied new location/info to sensors")
+
             if call.data.get("return_response", True):
                 return resp
             _LOGGER.debug("Command thing_list executed successfully (response suppressed)")
@@ -226,18 +316,10 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
     # Diagnostic services return payloads
     hass.services.async_register(
-        DOMAIN,
-        SERVICE_THING_FIND,
-        _srv_thing_find,
-        schema=THING_FIND_SCHEMA,
-        supports_response=True,
+        DOMAIN, SERVICE_THING_FIND, _srv_thing_find, schema=THING_FIND_SCHEMA, supports_response=True
     )
     hass.services.async_register(
-        DOMAIN,
-        SERVICE_THING_LIST,
-        _srv_thing_list,
-        schema=THING_LIST_SCHEMA,
-        supports_response=True,
+        DOMAIN, SERVICE_THING_LIST, _srv_thing_list, schema=THING_LIST_SCHEMA, supports_response=True
     )
 
     hass.data[DOMAIN][_FLAG] = True

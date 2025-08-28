@@ -3,7 +3,7 @@
 This is a custom [Home Assistant](https://www.home-assistant.io/) integration that lets you send **direct commands** to your Ambrogio (ZCS) robotic mower via the DeviceWISE API.
 
 Unlike the full-featured `ha-zcs-mower` integration, this project is intentionally **minimal**:
-- Focuses on **service calls** for automation (no entities, no sensors, no devices).
+- Focuses on **service calls** for automation
 - Supports **one mower** (one IMEI).
 - Commands are queued and retried automatically for reliability.
 

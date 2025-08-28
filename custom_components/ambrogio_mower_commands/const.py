@@ -40,3 +40,24 @@ ATTR_LATITUDE = "latitude"
 ATTR_LONGITUDE = "longitude"
 ATTR_RADIUS = "radius"
 ATTR_INDEX = "index"
+
+# -----------------------------
+# Integration runtime data keys
+# -----------------------------
+# These keys index into hass.data[DOMAIN][entry_id]
+KEY_CLIENT = "client"
+KEY_IMEI = "imei"
+KEY_CLIENT_NAME = "client_name"
+KEY_QUEUE = "queue"
+KEY_STATE = "state"  # dict storing latest lat/lon, connected, loc_updated, info, source
+
+# -----------------------------
+# Dispatcher signal for sensors
+# -----------------------------
+SIGNAL_STATE_UPDATED = "ambrogio_mower_commands_state_updated"
+
+# -----------------------------
+# Sensor unique_id suffixes
+# -----------------------------
+UNIQUE_SUFFIX_LOCATION = "location"
+UNIQUE_SUFFIX_INFO = "info"
